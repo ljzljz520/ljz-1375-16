@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>提醒管理·编排台 - 西安·长兴坊</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .panel{background:#fff;border:1px solid #d8c9a3;border-radius:8px;padding:1rem;margin:1rem 0}
+  .panel h3{color:var(--primary-red);margin-bottom:.6rem}
+  label{display:block;margin:.35rem 0}
+  input,select,textarea{padding:.3rem .5rem;border:1px solid #c9b789;border-radius:4px;font-family:inherit;max-width:100%}
+  textarea{width:100%;height:70px;font-family:monospace;font-size:.85rem}
+  button{background:var(--primary-red);color:#fff;border:none;border-radius:4px;padding:.4rem .9rem;cursor:pointer}
+  button.small{padding:.15rem .6rem;font-size:.85rem}
+  table{border-collapse:collapse;width:100%;margin:.5rem 0;font-size:.9rem}
+  th,td{border:1px solid #d8c9a3;padding:.3rem .5rem;text-align:left}
+  th{background:#f3ead3}
+  .seg-sel{max-height:150px;overflow:auto;border:1px solid #ddd;border-radius:4px;padding:.3rem}
+  .pend{background:#f8d7da}.muted{color:#777;font-size:.85rem}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+  @media(max-width:900px){.cols{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><div class="container"><nav>
+  <div class="logo">西安·长兴坊</div>
+  <ul>
+    <li><a href="index.html">历史背景</a></li>
+    <li><a href="activities.html">民俗活动</a></li>
+    <li><a href="travel.html">旅游指南</a></li>
+    <li><a href="planner.html">路线提醒</a></li>
+    <li><a href="admin.html">提醒管理</a></li>
+  </ul>
+</nav></div></header>
+
+<main class="container">
+<div class="cols">
+  <div class="panel">
+    <h3>① 发布提醒（标到具体线段）</h3>
+    <label>类型 <select id="a-kind">
+      <option value="construction">施工</option><option value="schedule">班次</option>
+      <option value="access_restriction">适行限制</option></select></label>
+    <label>来源 <input id="a-source" value="施工方"></label>
+    <label>标题 <input id="a-title" value=""></label>
+    <label>目标线段（按住 Ctrl 多选，几何取所选线段的实际走向）</label>
+    <div class="seg-sel" id="a-segs"></div>
+    <label>缓冲半径(米) <input id="a-buffer" type="number" value="5" style="width:5rem"></label>
+    <label>方向 <select id="a-dir">
+      <option value="both">双向</option><option value="forward">仅正向</option>
+      <option value="backward">仅反向</option></select></label>
+    <label>生效(起) <input id="a-start" type="datetime-local" value="2026-10-08T22:00"></label>
+    <label>生效(止) <input id="a-end" type="datetime-local" value="2026-10-09T06:00"></label>
+    <label>每日窗口（可跨日，如 22:00 到 06:00；留空不用）
+      <input id="a-ds" placeholder="22:00" style="width:5rem"> - <input id="a-de" placeholder="06:00" style="width:5rem"></label>
+    <label>规则：
+      <label><input type="checkbox" id="r-closed"> 封闭</label>
+      <label><input type="checkbox" id="r-wheel"> 轮椅不适行</label>
+      <label><input type="checkbox" id="r-stroller"> 婴儿车不适行</label>
+      <label><input type="checkbox" id="r-elderly"> 老人不适行</label>
+      <label>班次服务窗口 <input id="r-svc" placeholder="07:00-20:00" style="width:9rem"></label>
+    </label>
+    <label>备注 <input id="a-note"></label>
+    <button onclick="createAlert()">发布</button> <span id="a-out" class="muted"></span>
+  </div>
+
+  <div class="panel">
+    <h3>② 当前公告与修订</h3>
+    <div id="alerts"></div>
+  </div>
+</div>
+
+<div class="cols">
+  <div class="panel">
+    <h3>③ 来源上报（矛盾将自动标为待核）</h3>
+    <label>来源 <input id="rp-source" value="景区广播"></label>
+    <label>路段 <select id="rp-seg"></select></label>
+    <label>状态 <select id="rp-state"><option value="open">开放</option><option value="closed">封闭</option></select></label>
+    <label>窗口 <input id="rp-start" type="datetime-local" value="2026-10-08T10:00"> ~
+      <input id="rp-end" type="datetime-local" value="2026-10-08T12:00"></label>
+    <button onclick="report()">上报</button> <span id="rp-out" class="muted"></span>
+    <h3 style="margin-top:1rem">待核冲突（不作通行保证）</h3>
+    <div id="conflicts"></div>
+  </div>
+
+  <div class="panel">
+    <h3>④ 路线改线（产生新版本，影响自动重算）</h3>
+    <label>路线 <select id="rt-id"></select></label>
+    <label>新片段 JSON</label>
+    <textarea id="rt-segs">[{"a":"G","b":"H","geom":[[300,50],[350,100],[300,150]],"length_m":220,"slope_pct":3}]</textarea>
+    <button onclick="reroute()">提交改线</button> <span id="rt-out" class="muted"></span>
+    <h3 style="margin-top:1rem">⑤ 时空影响查询</h3>
+    <label>时刻 <input id="imp-at" type="datetime-local" value="2026-10-08T23:00"></label>
+    <button onclick="impacts()">查询影响</button>
+    <div id="impacts"></div>
+  </div>
+</div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let SEGS = [];
+async function api(p,o){ return (await fetch(p,o)).json(); }
+async function init(){
+  const g = await api('/api/graph'); SEGS = g.segments;
+  $('a-segs').innerHTML = SEGS.map(s=>`<label><input type="checkbox" class="seg-cb" value="${s.id}"> ${s.id}（${s.a}→${s.b}）</label>`).join('');
+  $('rp-seg').innerHTML = SEGS.map(s=>`<option value="${s.id}">${s.id}</option>`).join('');
+  $('rt-id').innerHTML = g.routes.map(r=>`<option value="${r.id}">${r.id} ${r.name}（v${r.version}）</option>`).join('');
+  refresh();
+}
+function selectedGeom(){
+  const ids = [...document.querySelectorAll('.seg-cb:checked')].map(x=>x.value);
+  const coords = [];
+  for(const id of ids){
+    const seg = SEGS.find(s=>s.id===id);
+    for(const p of JSON.parse(seg.geom)){ coords.push(p); }
+  }
+  return coords.length>=2 ? {type:'line', coordinates:coords, buffer_m:+$('a-buffer').value||0} : null;
+}
+async function createAlert(){
+  const geom = selectedGeom();
+  if(!geom){ $('a-out').textContent='请至少选择两个端点构成的线段'; return; }
+  const rule = {};
+  if($('r-closed').checked) rule.closed = true;
+  const exc = [];
+  if($('r-wheel').checked) exc.push('wheelchair');
+  if($('r-stroller').checked) exc.push('stroller');
+  if($('r-elderly').checked) exc.push('elderly');
+  if(exc.length) rule.excludes = exc;
+  if($('r-svc').value) rule.service = $('r-svc').value.split('-');
+  const body = { kind:$('a-kind').value, source:$('a-source').value, title:$('a-title').value||'未命名',
+    geom, direction:$('a-dir').value,
+    starts_at:$('a-start').value||null, ends_at:$('a-end').value||null,
+    daily_start:$('a-ds').value||null, daily_end:$('a-de').value||null,
+    rule, note:$('a-note').value };
+  const j = await api('/api/alerts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  $('a-out').textContent = '已发布 ' + (j.alert_id||JSON.stringify(j));
+  refresh();
+}
+async function refresh(){
+  const alerts = await api('/api/alerts');
+  $('alerts').innerHTML = `<table><tr><th>ID</th><th>类型</th><th>标题</th><th>版</th><th>窗口</th><th>状态</th><th></th></tr>` +
+    alerts.map(a=>`<tr class="${a.revoked?'pend':''}"><td>${a.id}</td><td>${a.kind}</td><td>${a.title}</td>
+      <td>v${a.rev}</td><td>${a.window}</td><td>${a.revoked?'已撤销':'生效中'}</td>
+      <td>${a.revoked?'':`<button class="small" onclick="revoke('${a.id}')">撤销</button>`}</td></tr>`).join('') + `</table>`;
+  const confs = await api('/api/conflicts');
+  $('conflicts').innerHTML = confs.length ? confs.map(c=>
+    `<div class="${c.status==='pending_review'?'pend':''}" style="padding:.4rem;margin:.3rem 0;border-radius:4px">
+      #${c.id} ${c.segment_id}｜${c.starts_at||'…'}~${c.ends_at||'…'}｜${c.detail}｜状态：${c.status==='pending_review'?'待核':c.status}</div>`).join('')
+    : '<p class="muted">暂无冲突。</p>';
+}
+async function revoke(aid){
+  const effective_at = prompt('撤销生效时间（ISO，可早于现在以模拟迟到撤销）', new Date().toISOString().slice(0,16));
+  if(!effective_at) return;
+  await api(`/api/alerts/${aid}/revoke`,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({effective_at, note:'管理端撤销'})});
+  refresh();
+}
+async function report(){
+  const body = { source:$('rp-source').value, segment_id:$('rp-seg').value, state:$('rp-state').value,
+    starts_at:$('rp-start').value||null, ends_at:$('rp-end').value||null };
+  const j = await api('/api/reports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  $('rp-out').textContent = j.new_conflicts ? `发现 ${j.new_conflicts} 处矛盾，已标为待核` : '已上报，无矛盾';
+  refresh();
+}
+async function reroute(){
+  try{
+    const segments = JSON.parse($('rt-segs').value);
+    const j = await api(`/api/routes/${$('rt-id').value}/reroute`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({segments})});
+    $('rt-out').textContent = j.version ? `已改线为 v${j.version}` : JSON.stringify(j);
+    init();
+  }catch(e){ $('rt-out').textContent = 'JSON 有误：'+e.message; }
+}
+async function impacts(){
+  const at = $('imp-at').value;
+  const imps = await api('/api/impacts?at='+encodeURIComponent(at));
+  $('impacts').innerHTML = imps.length ? `<table><tr><th>公告</th><th>路段</th><th>方向</th><th>窗口</th><th>交点</th></tr>` +
+    imps.map(i=>`<tr><td>${i.title}(v${i.rev})</td><td>${i.segment_id}</td><td>${i.direction}</td>
+      <td>${i.window}</td><td class="muted">${JSON.stringify(i.points)}</td></tr>`).join('') + '</table>'
+    : '<p class="muted">该时刻无影响。</p>';
+}
+init();
+</script>
+</body>
+</html>

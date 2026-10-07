@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>路线提醒·出行规划 - 西安·长兴坊</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .panel{background:#fff;border:1px solid #d8c9a3;border-radius:8px;padding:1rem;margin:1rem 0;box-shadow:0 2px 6px rgba(0,0,0,.08)}
+  .panel h3{color:var(--primary-red);margin-bottom:.6rem}
+  label{display:inline-block;margin:.3rem .8rem .3rem 0}
+  select,input[type=datetime-local]{padding:.35rem .5rem;border:1px solid #c9b789;border-radius:4px;font-family:inherit}
+  button{background:var(--primary-red);color:#fff;border:none;border-radius:4px;padding:.45rem 1rem;cursor:pointer;font-family:inherit}
+  button.ghost{background:#6b6b6b} button.small{padding:.15rem .6rem;font-size:.85rem}
+  button:disabled{background:#aaa;cursor:default}
+  .banner{background:#fff3cd;border:1px solid #e0c56e;border-radius:6px;padding:.5rem .8rem;margin:.5rem 0;display:none}
+  .alert-card{border-left:5px solid var(--primary-red);background:#fff;margin:.5rem 0;padding:.6rem .8rem;border-radius:4px}
+  .alert-card.schedule{border-left-color:#b8860b}.alert-card.access_restriction{border-left-color:#556b2f}
+  .tag{display:inline-block;background:#eee;border-radius:3px;padding:0 .4rem;margin-right:.3rem;font-size:.8rem}
+  .pending{background:#f8d7da;border:1px solid #c00;border-radius:6px;padding:.5rem .8rem;margin:.4rem 0}
+  .ok-badge{color:#1a7f37}.stale-badge{color:#c00}
+  table{border-collapse:collapse;width:100%;margin:.5rem 0}
+  th,td{border:1px solid #d8c9a3;padding:.35rem .6rem;text-align:left;font-size:.92rem}
+  th{background:#f3ead3}
+  .reason{background:#fdf0ef;border:1px solid #e0a49e;border-radius:6px;padding:.5rem .8rem;margin:.4rem 0}
+  #map{width:100%;height:340px;background:#fbf7ea;border:1px solid #d8c9a3;border-radius:8px}
+  .muted{color:#777;font-size:.85rem}
+  #print-area{display:none}
+  @media print{
+    body *{visibility:hidden}
+    #print-area,#print-area *{visibility:visible}
+    #print-area{display:block;position:absolute;left:0;top:0;width:100%;background:#fff;padding:1rem}
+  }
+</style>
+</head>
+<body>
+<header><div class="container"><nav>
+  <div class="logo">西安·长兴坊</div>
+  <ul>
+    <li><a href="index.html">历史背景</a></li>
+    <li><a href="activities.html">民俗活动</a></li>
+    <li><a href="travel.html">旅游指南</a></li>
+    <li><a href="planner.html">路线提醒</a></li>
+    <li><a href="admin.html">提醒管理</a></li>
+  </ul>
+</nav></div></header>
+
+<main class="container">
+  <div class="panel">
+    <h3>出行查询</h3>
+    <div id="geo-banner" class="banner">定位不可用或被拒绝——您仍可直接手动选择地点查询。</div>
+    <label>起点 <select id="origin"></select></label>
+    <label>终点 <select id="dest"></select></label>
+    <label>出发时间 <input type="datetime-local" id="depart" value="2026-10-08T23:00"></label>
+    <label><input type="checkbox" id="p-elderly"> 老人同行</label>
+    <label><input type="checkbox" id="p-children"> 儿童/婴儿车</label>
+    <label><input type="checkbox" id="p-wheelchair"> 轮椅/无障碍</label>
+    <button onclick="doPlan()">查询路线</button>
+    <button class="ghost" onclick="locate()">📍 使用我的位置</button>
+    <span class="muted">定位仅用于就近选点；拒绝授权不影响手动查询。</span>
+  </div>
+
+  <div class="panel"><h3>路网与实时影响</h3><svg id="map"></svg>
+    <div class="muted">红线=受影响片段；灰虚线=来源矛盾待核。影响按公告几何与实际线段求交得出，不按名称或包围框推断。</div>
+  </div>
+
+  <div id="result"></div>
+</main>
+
+<div id="print-area"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const USER = localStorage.getItem('ra_user') || (()=>{const u='u'+Math.random().toString(36).slice(2,8);localStorage.setItem('ra_user',u);return u;})();
+let PLACES = [], lastPlan = null;
+
+async function api(path, opts){ const r = await fetch(path, opts); return r.json(); }
+
+async function init(){
+  PLACES = await api('/api/places');
+  for(const sel of [$('origin'), $('dest')]){
+    sel.innerHTML = PLACES.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  }
+  $('dest').value = 'E';
+  drawMap();
+}
+function locate(){
+  if(!navigator.geolocation){ $('geo-banner').style.display='block'; $('origin').focus(); return; }
+  navigator.geolocation.getCurrentPosition(pos=>{
+    // 演示坐标系为局部米制网格：把经纬度映射到网格附近取最近地点
+    let best=null,bd=1e18;
+    for(const p of PLACES){ const d=(p.x-100)**2+(p.y-40)**2; if(d<bd){bd=d;best=p;} }
+    $('origin').value = best.id;
+  }, err=>{ $('geo-banner').style.display='block'; $('origin').focus(); },
+  {timeout:5000});
+}
+
+async function drawMap(){
+  const g = await api('/api/graph');
+  const at = $('depart').value ? $('depart').value : '';
+  const [imps, confs] = await Promise.all([api('/api/impacts'+(at?`?at=${at}`:'')), api('/api/conflicts')]);
+  const hit = {}, pend = new Set();
+  for(const i of imps){ (hit[i.segment_id] = hit[i.segment_id]||new Set()).add(i.alert_id); }
+  for(const c of confs) if(c.status==='pending_review') pend.add(c.segment_id);
+  const svg = $('map'); svg.setAttribute('viewBox','-30 -30 310 160');
+  let s = '';
+  for(const seg of g.segments){
+    const pts = JSON.parse(seg.geom);
+    const cls = pend.has(seg.id) ? 'pend' : (hit[seg.id] ? 'hit' : 'norm');
+    s += `<polyline points="${pts.map(p=>p.join(',')).join(' ')}" fill="none"
+      stroke="${cls==='hit'?'#c00':cls==='pend'?'#888':'#8B0000'}"
+      stroke-width="${cls==='norm'?2:4}" ${cls==='pend'?'stroke-dasharray="5 4"':''} opacity="0.85">
+      <title>${seg.id}${hit[seg.id]?(' · '+hit[seg.id].size+'项提醒'):''}${pend.has(seg.id)?' · 待核':''}</title></polyline>`;
+  }
+  for(const p of g.places){
+    s += `<circle cx="${p.x}" cy="${p.y}" r="4" fill="#1A1A1A"/><text x="${p.x+6}" y="${p.y+4}" font-size="9">${p.name}</text>`;
+  }
+  svg.innerHTML = s;
+}
+
+function fmtAlerts(steps){
+  const seen = {};
+  for(const st of steps||[]) for(const a of st.alerts){
+    seen[a.alert_id] = {...a, segment_id: st.segment_id};
+  }
+  return Object.values(seen);
+}
+
+async function doPlan(){
+  const req = { origin:$('origin').value, dest:$('dest').value, depart_at:$('depart').value,
+    party:{elderly:$('p-elderly').checked, children:$('p-children').checked, wheelchair:$('p-wheelchair').checked},
+    compare:true, save:true, user_id:USER };
+  const res = await api('/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)});
+  lastPlan = res;
+  render(res);
+  drawMap();
+}
+
+function stratRow(s){
+  if(!s) return '';
+  const extra = s.status==='ok' ? `${s.total_m}m / 约${s.eta_min}分钟`
+    : s.status==='infeasible' ? '无解（已给出原因集合）' : '路径违反约束（后筛才发现）';
+  return `<tr><td>${s.strategy==='constrained_search'?'约束直接进入搜索':'先求可达再筛人群'}</td>
+    <td>${s.status}</td><td>${s.nodes_expanded}</td><td>${extra}</td></tr>`;
+}
+
+function render(res){
+  const c = res.constrained, a = res.reachable_then_filter;
+  let h = `<div class="panel"><h3>策略对比</h3>
+    <table><tr><th>策略</th><th>结果</th><th>扩展节点</th><th>说明</th></tr>
+    ${stratRow(a)}${stratRow(c)}</table>`;
+  if(a && a.status==='violations_after_filter'){
+    h += `<div class="muted">“先求可达再筛”给出的最短路径违反 ${a.violations.length} 项约束，需返工；约束进入搜索则直接给出可行解或原因集合。</div>`;
+  }
+  h += `</div>`;
+
+  if(c.status==='ok'){
+    h += `<div class="panel"><h3>推荐路线（到达 ${res.dest}，约 ${c.eta_min} 分钟）</h3><ol>`;
+    for(const st of c.steps){
+      h += `<li>${st.enter_at.slice(11,16)} 经 <b>${st.route_id}</b>（${st.segment_id}）${st.from}→${st.to}，${st.length_m}m
+        ${st.alerts.length?`<span class="tag">${st.alerts.length}项提醒</span>`:''}</li>`;
+    }
+    h += `</ol><p class="muted">预计 ${c.arrive_at.slice(11,16)} 到达。计划号 ${res.plan_id||'-'}
+      <button class="small ghost" onclick="reconnect()">离线重连检查</button> <span id="reconnect-out"></span></p></div>`;
+    const alerts = fmtAlerts(c.steps);
+    if(alerts.length){
+      h += `<div class="panel"><h3>沿途提醒（位置 / 时间 / 依据）</h3>`;
+      for(const al of alerts){
+        const ack = (res.acks||{})[al.alert_id];
+        const ackTxt = ack && ack.ack_current ? `<span class="ok-badge">已确认 v${ack.acked_rev}</span>`
+          : `<button class="small" onclick="ack('${al.alert_id}',${al.rev})">确认已查看 v${al.rev}</button>`;
+        h += `<div class="alert-card ${al.kind}">
+          <b>${al.title}</b> <span class="tag">${{construction:'施工',schedule:'班次',access_restriction:'适行限制'}[al.kind]||al.kind}</span>
+          <span class="tag">第${al.rev}版</span><br>
+          影响位置：${al.segment_id}，交点 ${JSON.stringify(al.points)}<br>
+          影响时间：${al.window}<br>
+          依据：${al.basis}${al.note?(' · '+al.note):''}<br>${ackTxt}
+          ${ack && !ack.ack_current && ack.acked_rev ? `<span class="stale-badge">您确认的是 v${ack.acked_rev}，已有新版，需重新确认</span>`:''}
+        </div>`;
+      }
+      h += `</div>`;
+    }
+  } else {
+    h += `<div class="panel"><h3>无可行路线 —— 无解原因集合</h3>`;
+    for(const r of c.reasons||[]){
+      h += `<div class="reason"><b>${{party_constraint:'人群约束冲突',alert:'公告阻断',unverified_conflict:'来源矛盾待核',combined:'组合约束冲突',disconnected:'路网不连通'}[r.type]||r.type}</b><br>
+        ${r.detail||r.title||''} ${r.segment_id?('· 路段 '+r.segment_id):''} ${r.window?('· '+r.window):''}
+        ${r.constraint_name?('· '+r.constraint_name):''}<br><span class="muted">依据：${r.basis||'-'}</span></div>`;
+    }
+    h += `</div>`;
+  }
+
+  // 新鲜度与缺信息范围（打印件同版）
+  const f = res.freshness, mi = res.missing_info||[];
+  h += `<div class="panel"><h3>数据新鲜度与缺信息范围</h3>
+    <p>生成时间：${f.generated_at}</p><ul>`;
+  for(const s of f.sources){
+    h += `<li>${s.source}：最近上报 ${s.last_received_at}（${s.age_hours}小时前）
+      ${s.stale?'<span class="stale-badge">已超期</span>':'<span class="ok-badge">新鲜</span>'}</li>`;
+  }
+  h += `</ul>`;
+  if(mi.length){
+    h += `<p>缺信息范围：</p>`;
+    for(const m of mi){
+      h += `<div class="pending">${m.type==='pending_review'?'待核':'来源超期'}：${m.detail}
+        ${m.segment_id?('（路段 '+m.segment_id+'，'+m.window+'）'):''}</div>`;
+    }
+  } else h += `<p class="ok-badge">暂无缺信息项。</p>`;
+  h += `<button onclick="doPrint()">🖨 打印计划（附新鲜度与缺信息范围）</button></div>`;
+  $('result').innerHTML = h;
+  buildPrint(res);
+}
+
+function buildPrint(res){
+  const c = res.constrained, f = res.freshness;
+  let h = `<h2>出行计划（打印件）</h2>
+    <p>计划号 ${res.plan_id||'-'} · 生成时间 ${f.generated_at} · 本打印件仅反映生成时刻的数据版本</p>
+    <p>${res.origin} → ${res.dest}，出发 ${res.depart_at}，同行条件：${JSON.stringify(res.party)}</p>`;
+  if(c.status==='ok'){
+    h += `<ol>${c.steps.map(st=>`<li>${st.enter_at.slice(11,16)} ${st.route_id}（${st.segment_id}）${st.from}→${st.to}</li>`).join('')}</ol>`;
+    const alerts = fmtAlerts(c.steps);
+    if(alerts.length){
+      h += `<h3>沿途提醒</h3><ul>${alerts.map(al=>`<li>${al.title}（第${al.rev}版）｜位置 ${al.segment_id}｜时间 ${al.window}｜依据 ${al.basis}</li>`).join('')}</ul>`;
+    }
+  } else {
+    h += `<h3>无可行路线</h3><ul>${(c.reasons||[]).map(r=>`<li>${r.type}：${r.detail||r.title||''}（依据 ${r.basis||'-'}）</li>`).join('')}</ul>`;
+  }
+  h += `<h3>数据新鲜度</h3><ul>${f.sources.map(s=>`<li>${s.source}：${s.last_received_at}${s.stale?'（已超期）':''}</li>`).join('')}</ul>
+    <h3>缺信息范围</h3><ul>${(res.missing_info||[]).map(m=>`<li>${m.detail}${m.segment_id?('（'+m.segment_id+'）'):''}</li>`).join('')||'<li>无</li>'}</ul>`;
+  $('print-area').innerHTML = h;
+}
+function doPrint(){ window.print(); }
+async function ack(aid, rev){
+  const r = await fetch(`/api/alerts/${aid}/ack`,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({user_id:USER, rev})});
+  const j = await r.json();
+  if(!j.ok) alert(j.message);
+  if(lastPlan) doPlanRefresh();
+}
+async function doPlanRefresh(){ const res = await api('/api/plans/'+lastPlan.plan_id); lastPlan.result.acks = res.acks; render(lastPlan.result); }
+async function reconnect(){
+  const j = await api('/api/plans/'+lastPlan.plan_id+'/refresh');
+  $('reconnect-out').innerHTML = j.up_to_date ? '<span class="ok-badge">数据仍为最新</span>'
+    : `<span class="stale-badge">有变化：</span>` + JSON.stringify({变更公告:j.changed_alerts, 改线:j.rerouted_routes, 迟到撤销:j.late_revocations, 需重新确认:j.re_ack_needed});
+}
+init();
+</script>
+</body>
+</html>
