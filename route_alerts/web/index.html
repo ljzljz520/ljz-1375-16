@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>路线提醒编排器</title>
+<style>
+:root{--bg:#0f1420;--panel:#1a2234;--panel2:#222c42;--line:#33405c;
+--text:#e8edf7;--muted:#93a0b8;--ok:#37b26b;--warn:#e8a13a;--bad:#e05b6b;
+--pend:#c084f5;--accent:#5b8def;}
+*{box-sizing:border-box}
+body{margin:0;font-family:"PingFang SC","Microsoft YaHei",sans-serif;
+background:var(--bg);color:var(--text);font-size:14px}
+header{padding:12px 18px;border-bottom:1px solid var(--line);
+display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+h1{font-size:17px;margin:0;font-weight:600}
+nav{display:flex;gap:4px}
+nav button{background:transparent;border:0;color:var(--muted);padding:7px 14px;
+border-radius:8px;cursor:pointer;font-size:14px}
+nav button.active{background:var(--panel2);color:var(--text)}
+#ver{margin-left:auto;color:var(--muted);font-size:12px}
+main{display:grid;grid-template-columns:380px 1fr;gap:14px;padding:14px;height:calc(100vh - 58px)}
+@media(max-width:980px){main{grid-template-columns:1fr;height:auto}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+padding:14px;overflow:auto}
+.card h2{font-size:14px;margin:0 0 10px;color:#b9c6e0}
+label{display:block;font-size:12px;color:var(--muted);margin:8px 0 3px}
+input,select,textarea{width:100%;background:var(--panel2);border:1px solid var(--line);
+color:var(--text);border-radius:8px;padding:7px 9px;font-size:13px}
+textarea{font-family:monospace;font-size:12px;min-height:70px}
+.row{display:flex;gap:8px}.row>*{flex:1}
+button.act{background:var(--accent);border:0;color:#fff;border-radius:8px;
+padding:8px 12px;cursor:pointer;margin-top:10px;font-size:13px}
+button.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+.chk{display:flex;align-items:center;gap:6px;margin-top:8px;color:var(--text)}
+.chk input{width:auto}
+.tag{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;margin:1px 3px 1px 0}
+.t-open{background:rgba(55,178,107,.18);color:var(--ok)}
+.t-blocked{background:rgba(224,91,107,.18);color:var(--bad)}
+.t-pending{background:rgba(192,132,245,.2);color:var(--pend)}
+.t-info{background:rgba(91,141,239,.18);color:var(--accent)}
+.t-stale{background:rgba(232,161,58,.18);color:var(--warn)}
+.item{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:7px 0;
+background:var(--panel2)}
+.item b{font-size:13px}.muted{color:var(--muted);font-size:12px}
+.mono{font-family:monospace}
+#map{width:100%;height:100%;min-height:520px;background:#0b101c;border-radius:10px}
+.pick{outline:2px dashed var(--warn)}
+.small{font-size:12px}
+pre.plan{white-space:pre-wrap;word-break:break-word;background:var(--panel2);
+border-radius:8px;padding:10px;font-size:12px;line-height:1.55;max-height:300px;overflow:auto}
+.crit{color:var(--warn);font-weight:600}
+</style>
+</head>
+<body>
+<header>
+  <h1>🚦 路线提醒编排器</h1>
+  <nav>
+    <button data-tab="impact" class="active">路线影响</button>
+    <button data-tab="plan">出行规划（两策略对比）</button>
+    <button data-tab="manage">公告/规则管理</button>
+    <button data-tab="offline">离线计划 · 打印</button>
+  </nav>
+  <span id="ver"></span>
+</header>
+<main>
+  <section class="card" id="panel"></section>
+  <section class="card" style="padding:8px">
+    <svg id="map" viewBox="0 0 1000 720"></svg>
+  </section>
+</main>
+<script src="/web/app.js"></script>
+</body>
+</html>
